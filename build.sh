@@ -205,6 +205,7 @@ if [[ ${STEP_ALL} || ${STEP_BINUTILS} ]]; then
   tar xjf binutils-${BINUTILS_VERSION}.tar.bz2 -C ${SRCDIR}
   cd ${SRCDIR}/binutils-${BINUTILS_VERSION}
   patch -p1 < ${PATCHDIR}/binutils.patch
+  patch -p1 < ${PATCHDIR}/binutils-227.patch
   if [[ "${HOST_NAME}" == *"mingw"* ]]; then
     patch -p1 < ${PATCHDIR}/binutils-mingw.patch
   fi
@@ -338,21 +339,21 @@ if [[ ${STEP_ALL} || ${STEP_STRIP} ]]; then
   find ${VITASDKROOT} -name '*.la' -type f -exec rm '{}' ';'
   find ${VITASDKROOT} -executable -type f -exec strip '{}' ';'
 
-  for target_lib in `find ${VITASDKROOT}/${HOST_TARGET}/lib -name \*.a` ; do
-      ${HOST_TARGET}-objcopy -R .comment -R .note -R .debug_info -R .debug_aranges -R .debug_pubnames -R .debug_pubtypes -R .debug_abbrev -R .debug_line -R .debug_str -R .debug_ranges -R .debug_loc $target_lib || true
-  done
+#  for target_lib in `find ${VITASDKROOT}/${HOST_TARGET}/lib -name \*.a` ; do
+#      ${HOST_TARGET}-objcopy -R .comment -R .note -R .debug_info -R .debug_aranges -R .debug_pubnames -R .debug_pubtypes -R .debug_abbrev -R .debug_line -R .debug_str -R .debug_ranges -R .debug_loc $target_lib || true
+#  done
 
-  for target_obj in `find ${VITASDKROOT}/${HOST_TARGET}/lib -name \*.o` ; do
-      ${HOST_TARGET}-objcopy -R .comment -R .note -R .debug_info -R .debug_aranges -R .debug_pubnames -R .debug_pubtypes -R .debug_abbrev -R .debug_line -R .debug_str -R .debug_ranges -R .debug_loc $target_obj || true
-  done
+#  for target_obj in `find ${VITASDKROOT}/${HOST_TARGET}/lib -name \*.o` ; do
+#      ${HOST_TARGET}-objcopy -R .comment -R .note -R .debug_info -R .debug_aranges -R .debug_pubnames -R .debug_pubtypes -R .debug_abbrev -R .debug_line -R .debug_str -R .debug_ranges -R .debug_loc $target_obj || true
+#  done
 
-  for target_lib in `find ${VITASDKROOT}/lib/gcc/${HOST_TARGET}/${GCC_VERSION} -name \*.a` ; do
-      ${HOST_TARGET}-objcopy -R .comment -R .note -R .debug_info -R .debug_aranges -R .debug_pubnames -R .debug_pubtypes -R .debug_abbrev -R .debug_line -R .debug_str -R .debug_ranges -R .debug_loc $target_lib || true
-  done
+#  for target_lib in `find ${VITASDKROOT}/lib/gcc/${HOST_TARGET}/${GCC_VERSION} -name \*.a` ; do
+#      ${HOST_TARGET}-objcopy -R .comment -R .note -R .debug_info -R .debug_aranges -R .debug_pubnames -R .debug_pubtypes -R .debug_abbrev -R .debug_line -R .debug_str -R .debug_ranges -R .debug_loc $target_lib || true
+#  done
 
-  for target_obj in `find ${VITASDKROOT}/lib/gcc/${HOST_TARGET}/${GCC_VERSION} -name \*.o` ; do
-      ${HOST_TARGET}-objcopy -R .comment -R .note -R .debug_info -R .debug_aranges -R .debug_pubnames -R .debug_pubtypes -R .debug_abbrev -R .debug_line -R .debug_str -R .debug_ranges -R .debug_loc $target_obj || true
-  done
+#  for target_obj in `find ${VITASDKROOT}/lib/gcc/${HOST_TARGET}/${GCC_VERSION} -name \*.o` ; do
+#      ${HOST_TARGET}-objcopy -R .comment -R .note -R .debug_info -R .debug_aranges -R .debug_pubnames -R .debug_pubtypes -R .debug_abbrev -R .debug_line -R .debug_str -R .debug_ranges -R .debug_loc $target_obj || true
+#  done
 fi
 
 export PATH=${OLDPATH}

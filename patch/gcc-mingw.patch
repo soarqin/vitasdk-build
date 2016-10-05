@@ -1,0 +1,166 @@
+diff -ur gcc-6.2.0-orig/gcc/configure gcc-6.2.0/gcc/configure
+--- gcc-6.2.0-orig/gcc/configure	2016-06-08 21:34:25.000000000 +0800
++++ gcc-6.2.0/gcc/configure	2016-09-05 12:37:56.382240300 +0800
+@@ -9740,17 +9740,6 @@
+ 
+ fi
+ 
+-ac_fn_cxx_check_type "$LINENO" "caddr_t" "ac_cv_type_caddr_t" "$ac_includes_default"
+-if test "x$ac_cv_type_caddr_t" = x""yes; then :
+-
+-else
+-
+-cat >>confdefs.h <<_ACEOF
+-#define caddr_t char *
+-_ACEOF
+-
+-fi
+-
+ 
+ 
+ ac_fn_cxx_check_header_preproc "$LINENO" "sys/mman.h" "ac_cv_header_sys_mman_h"
+diff -ur gcc-6.2.0-orig/libcpp/files.c gcc-6.2.0/libcpp/files.c
+--- gcc-6.2.0-orig/libcpp/files.c	2016-01-29 06:35:20.000000000 +0800
++++ gcc-6.2.0/libcpp/files.c	2016-09-05 12:37:10.333827900 +0800
+@@ -30,6 +30,13 @@
+ #include "md5.h"
+ #include <dirent.h>
+ 
++/* Needed for stat_st_mode_symlink below */
++#if defined(_WIN32)
++#  include <windows.h>
++#  define S_IFLNK 0xF000
++#  define S_ISLNK(m) (((m) & S_IFMT) == S_IFLNK)
++#endif
++
+ /* Variable length record files on VMS will have a stat size that includes
+    record control characters that won't be included in the read size.  */
+ #ifdef VMS
+@@ -198,6 +205,49 @@
+ static int pchf_compare (const void *d_p, const void *e_p);
+ static bool check_file_against_entries (cpp_reader *, _cpp_file *, bool);
+ 
++#if defined(_WIN32)
++
++static int stat_st_mode_symlink (char const* path, struct stat* buf)
++{
++  WIN32_FILE_ATTRIBUTE_DATA attr;
++  memset(buf,0,sizeof(*buf));
++  int err = GetFileAttributesExA (path, GetFileExInfoStandard, &attr) ? 0 : 1;
++  if (!err)
++    {
++      WIN32_FIND_DATAA finddata;
++      HANDLE h = FindFirstFileA (path, &finddata);
++      if (h != INVALID_HANDLE_VALUE)
++        {
++          FindClose (h);
++          if ((finddata.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) &&
++              (finddata.dwReserved0 == IO_REPARSE_TAG_SYMLINK))
++              buf->st_mode = S_IFLNK;
++          else if (finddata.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
++              buf->st_mode = S_IFDIR;
++          else if (finddata.dwFileAttributes & FILE_ATTRIBUTE_ARCHIVE)
++              buf->st_mode = S_IFDIR;
++          else
++              buf->st_mode = S_IFREG;
++          buf->st_mode |= S_IREAD;
++          if (!(finddata.dwFileAttributes & FILE_ATTRIBUTE_READONLY))
++              buf->st_mode |= S_IWRITE;
++        }
++      else
++        {
++          buf->st_mode = S_IFDIR;
++        }
++      return 0;
++    }
++  return -1;
++}
++
++#else
++
++#define stat_st_mode_symlink (_name, _buf) stat ((_name), (_buf))
++
++#endif
++
++
+ /* Given a filename in FILE->PATH, with the empty string interpreted
+    as <stdin>, open it.
+ 
+@@ -227,6 +277,43 @@
+     }
+   else
+     file->fd = open (file->path, O_RDONLY | O_NOCTTY | O_BINARY, 0666);
++#if defined(_WIN32) || defined(__CYGWIN__)
++  /* Windows and Posix differ in the face of paths of the form:
++     nonexistantdir/.. in that Posix will return ENOENT whereas
++     Windows won't care that we stepped into a non-existant dir
++     Only do these slow checks if ".." appears in file->path.
++     Cygwin also suffers from the same problem (but doesn't need
++     a new stat function):
++     http://cygwin.com/ml/cygwin/2013-05/msg00222.html
++  */
++  if (file->fd > 0)
++    {
++      char filepath[MAX_PATH];
++      strncpy (filepath, file->path, sizeof(filepath) - 1);
++      char* dirsep = &filepath[0];
++      while ( (dirsep = strchr (dirsep, '\\')) != NULL)
++        *dirsep = '/';
++      if (strstr(file->path, "/../"))
++	{
++	  dirsep = &filepath[0];
++	  char dirsepc;
++	  /* Check each directory in the chain. */
++	  while ( (dirsep = strpbrk (dirsep, "\\/")) != NULL)
++	    {
++	      dirsepc = *(++dirsep);
++	      *dirsep = '\0';
++	      if (stat_st_mode_symlink (filepath, &file->st) == -1)
++	        {
++	          *dirsep = dirsepc;
++	          close (file->fd);
++	          file->fd = -1;
++	          return false;
++	        }
++	      *dirsep++ = dirsepc;
++	    }
++	}
++    }
++#endif
+ 
+   if (file->fd != -1)
+     {
+diff -ur gcc-6.2.0-orig/libiberty/lrealpath.c gcc-6.2.0/libiberty/lrealpath.c
+--- gcc-6.2.0-orig/libiberty/lrealpath.c	2005-05-25 04:48:25.000000000 +0800
++++ gcc-6.2.0/libiberty/lrealpath.c	2016-09-05 12:37:10.327810700 +0800
+@@ -138,15 +138,26 @@
+   {
+     char buf[MAX_PATH];
+     char* basename;
++    char* slash;
+     DWORD len = GetFullPathName (filename, MAX_PATH, buf, &basename);
+     if (len == 0 || len > MAX_PATH - 1)
+       return strdup (filename);
+     else
+       {
+-	/* The file system is case-preserving but case-insensitive,
+-	   Canonicalize to lowercase, using the codepage associated
+-	   with the process locale.  */
+-        CharLowerBuff (buf, len);
++	/* Turn all back slashes back back into forward slashes
++	   and don't make it all lowercase.
++	   Rationale:
++	   Windows is as happy with / as it is with \. This will
++	   have been built using Cygwin, MSYS* or cross-compiled
++	   from a system where dirsep is / so it is cleaner just
++	   to keep the dirseps as / (and the case un-modified).
++	   This way, the value will be consistent with the build
++	   system and string operations (be they internal to this
++	   software or external to it, e.g. processing map files
++	   with sed) work as expected.  */
++	slash = buf;
++	while ((slash = strchr(slash,'\\')) !=  NULL)
++	  *slash = '/';
+         return strdup (buf);
+       }
+   }

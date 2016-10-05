@@ -1,0 +1,420 @@
+diff -ur binutils-2.26.1-orig/bfd/bfd-in.h binutils-2.26.1/bfd/bfd-in.h
+--- binutils-2.26.1-orig/bfd/bfd-in.h	2015-11-13 15:27:40.000000000 +0700
++++ binutils-2.26.1/bfd/bfd-in.h	2016-09-16 17:57:02.135646600 +0700
+@@ -137,7 +137,7 @@
+ 
+ #if BFD_HOST_64BIT_LONG
+ #define BFD_VMA_FMT "l"
+-#elif defined (__MSVCRT__)
++#elif defined(__MSVCRT__) && !defined( __USE_MINGW_ANSI_STDIO)
+ #define BFD_VMA_FMT "I64"
+ #else
+ #define BFD_VMA_FMT "ll"
+diff -ur binutils-2.26.1-orig/bfd/bfd-in2.h binutils-2.26.1/bfd/bfd-in2.h
+--- binutils-2.26.1-orig/bfd/bfd-in2.h	2016-01-25 15:51:06.000000000 +0700
++++ binutils-2.26.1/bfd/bfd-in2.h	2016-09-16 17:57:02.149418800 +0700
+@@ -144,7 +144,7 @@
+ 
+ #if BFD_HOST_64BIT_LONG
+ #define BFD_VMA_FMT "l"
+-#elif defined (__MSVCRT__)
++#elif defined (__MSVCRT__) && !defined(__USE_MINGW_ANSI_STDIO)
+ #define BFD_VMA_FMT "I64"
+ #else
+ #define BFD_VMA_FMT "ll"
+diff -ur binutils-2.26.1-orig/binutils/bucomm.c binutils-2.26.1/binutils/bucomm.c
+--- binutils-2.26.1-orig/binutils/bucomm.c	2015-11-13 15:27:40.000000000 +0700
++++ binutils-2.26.1/binutils/bucomm.c	2016-09-16 18:00:42.725445300 +0700
+@@ -574,6 +574,14 @@
+ get_file_size (const char * file_name)
+ {
+   struct stat statbuf;
++  int f, t;
++  t = -1;
++  f = open (file_name, O_RDONLY | O_BINARY);
++  if (f != 0)
++    {
++      t = isatty (f);
++      close (f);
++    }
+ 
+   if (stat (file_name, &statbuf) < 0)
+     {
+@@ -583,8 +591,15 @@
+ 	non_fatal (_("Warning: could not locate '%s'.  reason: %s"),
+ 		   file_name, strerror (errno));
+     }
+-  else if (! S_ISREG (statbuf.st_mode))
+-    non_fatal (_("Warning: '%s' is not an ordinary file"), file_name);
++  else if (! S_ISREG (statbuf.st_mode) || t > 0)
++    {
++#ifdef _WIN32
++      /* libtool passes /dev/null and checks for /dev/null in the output */
++      if (stricmp (file_name, "nul") == 0)
++        file_name = "/dev/null";
++#endif
++      non_fatal (_("Warning: '%s' is not an ordinary file"), file_name);
++    }
+   else if (statbuf.st_size < 0)
+     non_fatal (_("Warning: '%s' has negative size, probably it is too large"),
+                file_name);
+diff -ur binutils-2.26.1-orig/binutils/dwarf.c binutils-2.26.1/binutils/dwarf.c
+--- binutils-2.26.1-orig/binutils/dwarf.c	2016-01-25 15:51:06.000000000 +0700
++++ binutils-2.26.1/binutils/dwarf.c	2016-09-16 17:57:02.180007900 +0700
+@@ -164,7 +164,7 @@
+ }
+ 
+ #if defined HAVE_LONG_LONG && SIZEOF_LONG_LONG > SIZEOF_LONG
+-# ifndef __MINGW32__
++# if !defined(__MSVCRT__) || defined(__USE_MINGW_ANSI_STDIO)
+ #  define DWARF_VMA_FMT		"ll"
+ #  define DWARF_VMA_FMT_LONG	"%16.16llx"
+ # else
+diff -ur binutils-2.26.1-orig/binutils/elfedit.c binutils-2.26.1/binutils/elfedit.c
+--- binutils-2.26.1-orig/binutils/elfedit.c	2015-11-13 15:27:40.000000000 +0700
++++ binutils-2.26.1/binutils/elfedit.c	2016-09-16 17:57:02.189032200 +0700
+@@ -483,6 +483,14 @@
+ check_file (const char *file_name, struct stat *statbuf_p)
+ {
+   struct stat statbuf;
++  int f, t;
++  t = -1;
++  f = open (file_name, O_RDONLY | O_BINARY);
++  if (f != 0)
++    {
++      t = isatty (f);
++      close (f);
++    }
+ 
+   if (statbuf_p == NULL)
+     statbuf_p = &statbuf;
+@@ -497,8 +505,13 @@
+       return 1;
+     }
+ 
+-  if (! S_ISREG (statbuf_p->st_mode))
++  if (! S_ISREG (statbuf_p->st_mode) || t > 0)
+     {
++#ifdef _WIN32
++      /* libtool passes /dev/null and checks for /dev/null in the output */
++      if (stricmp (file_name, "nul") == 0)
++        file_name = "/dev/null";
++#endif
+       error (_("'%s' is not an ordinary file\n"), file_name);
+       return 1;
+     }
+diff -ur binutils-2.26.1-orig/binutils/nm.c binutils-2.26.1/binutils/nm.c
+--- binutils-2.26.1-orig/binutils/nm.c	2015-11-13 15:27:41.000000000 +0700
++++ binutils-2.26.1/binutils/nm.c	2016-09-16 17:57:02.198561100 +0700
+@@ -162,7 +162,7 @@
+ #if BFD_HOST_64BIT_LONG
+ static char value_format_64bit[] = "%016lx";
+ #elif BFD_HOST_64BIT_LONG_LONG
+-#ifndef __MSVCRT__
++#if !defined(__MSVCRT__) || defined(__USE_MINGW_ANSI_STDIO)
+ static char value_format_64bit[] = "%016llx";
+ #else
+ static char value_format_64bit[] = "%016I64x";
+@@ -292,7 +292,7 @@
+ #if BFD_HOST_64BIT_LONG
+       value_format_64bit[5] = *radix;
+ #elif BFD_HOST_64BIT_LONG_LONG
+-#ifndef __MSVCRT__
++#if !defined(__MSVCRT__) || defined(__USE_MINGW_ANSI_STDIO)
+       value_format_64bit[6] = *radix;
+ #else
+       value_format_64bit[7] = *radix;
+diff -ur binutils-2.26.1-orig/binutils/prdbg.c binutils-2.26.1/binutils/prdbg.c
+--- binutils-2.26.1-orig/binutils/prdbg.c	2015-11-13 15:27:41.000000000 +0700
++++ binutils-2.26.1/binutils/prdbg.c	2016-09-16 17:57:02.207084200 +0700
+@@ -502,7 +502,7 @@
+ #if BFD_HOST_64BIT_LONG_LONG
+   else if (sizeof (vma) <= sizeof (unsigned long long))
+     {
+-#ifndef __MSVCRT__
++#if !defined(__MSVCRT__) || defined(__USE_MINGW_ANSI_STDIO)
+       if (hexp)
+ 	sprintf (buf, "0x%llx", (unsigned long long) vma);
+       else if (unsignedp)
+diff -ur binutils-2.26.1-orig/binutils/readelf.c binutils-2.26.1/binutils/readelf.c
+--- binutils-2.26.1-orig/binutils/readelf.c	2015-11-13 15:27:41.000000000 +0700
++++ binutils-2.26.1/binutils/readelf.c	2016-09-16 17:57:02.221626100 +0700
+@@ -1150,7 +1150,7 @@
+ 		  : "%12.12lx  %12.12lx ",
+ 		  offset, inf);
+ #elif BFD_HOST_64BIT_LONG_LONG
+-#ifndef __MSVCRT__
++#if !defined(__MSVCRT__) || defined(__USE_MINGW_ANSI_STDIO)
+ 	  printf (do_wide
+ 		  ? "%16.16llx  %16.16llx "
+ 		  : "%12.12llx  %12.12llx ",
+@@ -12174,7 +12174,7 @@
+ 	{
+ 	  size_t maxlen = end - data;
+ 
+-#ifndef __MSVCRT__
++#if !defined(__MSVCRT__) || defined(__USE_MINGW_ANSI_STDIO)
+ 	  /* PR 11128: Use two separate invocations in order to work
+              around bugs in the Solaris 8 implementation of printf.  */
+ 	  printf ("  [%6tx]  ", data - start);
+@@ -16493,6 +16493,14 @@
+   struct stat statbuf;
+   char armag[SARMAG];
+   int ret;
++  int f, t;
++  t = -1;
++  f = open (file_name, O_RDONLY | O_BINARY);
++  if (f != 0)
++    {
++      t = isatty (f);
++      close (f);
++    }
+ 
+   if (stat (file_name, &statbuf) < 0)
+     {
+@@ -16504,8 +16512,13 @@
+       return 1;
+     }
+ 
+-  if (! S_ISREG (statbuf.st_mode))
++  if (! S_ISREG (statbuf.st_mode) || t > 0)
+     {
++#ifdef _WIN32
++      /* libtool passes /dev/null and checks for /dev/null in the output */
++      if (stricmp (file_name, "nul") == 0)
++        file_name = "/dev/null";
++#endif
+       error (_("'%s' is not an ordinary file\n"), file_name);
+       return 1;
+     }
+diff -ur binutils-2.26.1-orig/binutils/strings.c binutils-2.26.1/binutils/strings.c
+--- binutils-2.26.1-orig/binutils/strings.c	2015-11-13 15:27:41.000000000 +0700
++++ binutils-2.26.1/binutils/strings.c	2016-09-16 17:57:02.235162800 +0700
+@@ -595,7 +595,7 @@
+ #ifdef HAVE_LONG_LONG
+ 	    if (sizeof (start) > sizeof (long))
+ 	      {
+-# ifndef __MSVCRT__
++# if !defined(__MSVCRT__) || defined(__USE_MINGW_ANSI_STDIO)
+ 	        printf ("%7llo ", (unsigned long long) start);
+ # else
+ 	        printf ("%7I64o ", (unsigned long long) start);
+@@ -614,7 +614,7 @@
+ #ifdef HAVE_LONG_LONG
+ 	    if (sizeof (start) > sizeof (long))
+ 	      {
+-# ifndef __MSVCRT__
++# if !defined(__MSVCRT__) || defined(__USE_MINGW_ANSI_STDIO)
+ 	        printf ("%7lld ", (unsigned long long) start);
+ # else
+ 	        printf ("%7I64d ", (unsigned long long) start);
+@@ -633,7 +633,7 @@
+ #ifdef HAVE_LONG_LONG
+ 	    if (sizeof (start) > sizeof (long))
+ 	      {
+-# ifndef __MSVCRT__
++# if !defined(__MSVCRT__) || defined(__USE_MINGW_ANSI_STDIO)
+ 	        printf ("%7llx ", (unsigned long long) start);
+ # else
+ 	        printf ("%7I64x ", (unsigned long long) start);
+diff -ur binutils-2.26.1-orig/gas/as.h binutils-2.26.1/gas/as.h
+--- binutils-2.26.1-orig/gas/as.h	2015-11-13 15:27:41.000000000 +0700
++++ binutils-2.26.1/gas/as.h	2016-09-16 17:57:02.245192300 +0700
+@@ -451,10 +451,10 @@
+ 
+ #define PRINTF_LIKE(FCN) \
+   void FCN (const char *format, ...) \
+-    __attribute__ ((__format__ (__printf__, 1, 2)))
++    __attribute__ ((__format__ (gnu_printf, 1, 2)))
+ #define PRINTF_WHERE_LIKE(FCN) \
+   void FCN (char *file, unsigned int line, const char *format, ...) \
+-    __attribute__ ((__format__ (__printf__, 3, 4)))
++    __attribute__ ((__format__ (gnu_printf, 3, 4)))
+ 
+ #else /* __GNUC__ < 2 || defined(VMS) */
+ 
+diff -ur binutils-2.26.1-orig/gas/read.c binutils-2.26.1/gas/read.c
+--- binutils-2.26.1-orig/gas/read.c	2015-11-13 15:27:41.000000000 +0700
++++ binutils-2.26.1/gas/read.c	2016-09-16 17:57:02.254216000 +0700
+@@ -4352,7 +4352,7 @@
+ 	      || (get & hibit) == 0))
+ 	{		/* Leading bits contain both 0s & 1s.  */
+ #if defined (BFD64) && BFD_HOST_64BIT_LONG_LONG
+-#ifndef __MSVCRT__
++#if !defined(__MSVCRT__) || defined(__USE_MINGW_ANSI_STDIO)
+ 	  as_warn (_("value 0x%llx truncated to 0x%llx"),
+ 		   (unsigned long long) get, (unsigned long long) use);
+ #else
+diff -ur binutils-2.26.1-orig/gold/configure binutils-2.26.1/gold/configure
+--- binutils-2.26.1-orig/gold/configure	2015-11-13 15:27:42.000000000 +0700
++++ binutils-2.26.1/gold/configure	2016-09-16 17:57:02.284803400 +0700
+@@ -7489,7 +7489,7 @@
+ /* end confdefs.h.  */
+ 
+ template<typename T> extern void foo(const char*, ...)
+-  __attribute__ ((__format__ (__printf__, 1, 2)));
++  __attribute__ ((__format__ (gnu_printf, 1, 2)));
+ template<typename T> void foo(const char* format, ...) {}
+ void bar() { foo<int>("%s\n", "foo"); }
+ 
+diff -ur binutils-2.26.1-orig/gold/configure.ac binutils-2.26.1/gold/configure.ac
+--- binutils-2.26.1-orig/gold/configure.ac	2015-11-13 15:27:42.000000000 +0700
++++ binutils-2.26.1/gold/configure.ac	2016-09-16 17:57:02.295334600 +0700
+@@ -616,7 +616,7 @@
+ [gold_cv_template_attribute],
+ [AC_COMPILE_IFELSE([
+ template<typename T> extern void foo(const char*, ...)
+-  __attribute__ ((__format__ (__printf__, 1, 2)));
++  __attribute__ ((__format__ (gnu_printf, 1, 2)));
+ template<typename T> void foo(const char* format, ...) {}
+ void bar() { foo<int>("%s\n", "foo"); }
+ ], [gold_cv_template_attribute=yes], [gold_cv_template_attribute=no])])
+diff -ur binutils-2.26.1-orig/include/ansidecl.h binutils-2.26.1/include/ansidecl.h
+--- binutils-2.26.1-orig/include/ansidecl.h	2015-11-13 15:27:42.000000000 +0700
++++ binutils-2.26.1/include/ansidecl.h	2016-09-16 17:57:02.304860700 +0700
+@@ -195,7 +195,7 @@
+    before GCC 3.3, but as of 3.3 we need to add the `nonnull'
+    attribute to retain this behavior.  */
+ #ifndef ATTRIBUTE_PRINTF
+-#define ATTRIBUTE_PRINTF(m, n) __attribute__ ((__format__ (__printf__, m, n))) ATTRIBUTE_NONNULL(m)
++#define ATTRIBUTE_PRINTF(m, n) __attribute__ ((__format__ (gnu_printf, m, n))) ATTRIBUTE_NONNULL(m)
+ #define ATTRIBUTE_PRINTF_1 ATTRIBUTE_PRINTF(1, 2)
+ #define ATTRIBUTE_PRINTF_2 ATTRIBUTE_PRINTF(2, 3)
+ #define ATTRIBUTE_PRINTF_3 ATTRIBUTE_PRINTF(3, 4)
+@@ -223,7 +223,7 @@
+    NULL format specifier was allowed as of gcc 3.3.  */
+ #ifndef ATTRIBUTE_NULL_PRINTF
+ # if (GCC_VERSION >= 3003)
+-#  define ATTRIBUTE_NULL_PRINTF(m, n) __attribute__ ((__format__ (__printf__, m, n)))
++#  define ATTRIBUTE_NULL_PRINTF(m, n) __attribute__ ((__format__ (gnu_printf, m, n)))
+ # else
+ #  define ATTRIBUTE_NULL_PRINTF(m, n)
+ # endif /* GNUC >= 3.3 */
+diff -ur binutils-2.26.1-orig/libiberty/configure binutils-2.26.1/libiberty/configure
+--- binutils-2.26.1-orig/libiberty/configure	2015-11-13 15:27:42.000000000 +0700
++++ binutils-2.26.1/libiberty/configure	2016-09-16 17:57:02.336447600 +0700
+@@ -5718,7 +5718,6 @@
+ funcs="$funcs vprintf"
+ funcs="$funcs vsnprintf"
+ funcs="$funcs vsprintf"
+-funcs="$funcs waitpid"
+ funcs="$funcs setproctitle"
+ 
+ # Also in the old function.def file: alloca, vfork, getopt.
+@@ -6085,13 +6084,6 @@
+  ;;
+ esac
+ 
+-    case " $LIBOBJS " in
+-  *" waitpid.$ac_objext "* ) ;;
+-  *) LIBOBJS="$LIBOBJS waitpid.$ac_objext"
+- ;;
+-esac
+-
+-
+     for f in $funcs; do
+       case "$f" in
+ 	asprintf | basename | bcmp | bcopy | bzero | clock | ffs | getpagesize | index | insque | mempcpy | mkstemps | random | rindex | sigsetmask | stpcpy | stpncpy | strdup | strndup | strnlen | strverscmp | vasprintf | waitpid)
+@@ -6232,12 +6224,6 @@
+ esac
+ 
+     case " $LIBOBJS " in
+-  *" vfork.$ac_objext "* ) ;;
+-  *) LIBOBJS="$LIBOBJS vfork.$ac_objext"
+- ;;
+-esac
+-
+-    case " $LIBOBJS " in
+   *" waitpid.$ac_objext "* ) ;;
+   *) LIBOBJS="$LIBOBJS waitpid.$ac_objext"
+  ;;
+@@ -6705,7 +6691,7 @@
+   if test $ac_cv_func_vfork_works = no; then
+     case " $LIBOBJS " in
+   *" vfork.$ac_objext "* ) ;;
+-  *) LIBOBJS="$LIBOBJS vfork.$ac_objext"
++  *)
+  ;;
+ esac
+ 
+diff -ur binutils-2.26.1-orig/libiberty/configure.ac binutils-2.26.1/libiberty/configure.ac
+--- binutils-2.26.1-orig/libiberty/configure.ac	2015-11-13 15:27:42.000000000 +0700
++++ binutils-2.26.1/libiberty/configure.ac	2016-09-16 17:57:02.355498500 +0700
+@@ -382,7 +382,6 @@
+ funcs="$funcs vprintf"
+ funcs="$funcs vsnprintf"
+ funcs="$funcs vsprintf"
+-funcs="$funcs waitpid"
+ funcs="$funcs setproctitle"
+ 
+ # Also in the old function.def file: alloca, vfork, getopt.
+@@ -483,6 +482,7 @@
+     AC_LIBOBJ([insque])
+     AC_LIBOBJ([mempcpy])
+     AC_LIBOBJ([mkstemps])
++    AC_LIBOBJ([msdos])
+     AC_LIBOBJ([random])
+     AC_LIBOBJ([rindex])
+     AC_LIBOBJ([sigsetmask])
+@@ -492,7 +492,6 @@
+     AC_LIBOBJ([strnlen])
+     AC_LIBOBJ([strverscmp])
+     AC_LIBOBJ([vasprintf])
+-    AC_LIBOBJ([waitpid])
+ 
+     for f in $funcs; do
+       case "$f" in
+@@ -646,9 +645,6 @@
+   AC_REPLACE_FUNCS($funcs)
+   libiberty_AC_FUNC_C_ALLOCA
+   AC_FUNC_FORK
+-  if test $ac_cv_func_vfork_works = no; then
+-    AC_LIBOBJ([vfork])
+-  fi
+   # We only need _doprnt if we might use it to implement v*printf.
+   if test $ac_cv_func_vprintf != yes \
+      || test $ac_cv_func_vfprintf != yes \
+diff -ur binutils-2.26.1-orig/libiberty/Makefile.in binutils-2.26.1/libiberty/Makefile.in
+--- binutils-2.26.1-orig/libiberty/Makefile.in	2015-11-13 15:27:42.000000000 +0700
++++ binutils-2.26.1/libiberty/Makefile.in	2016-09-16 18:11:52.725689900 +0700
+@@ -131,7 +131,7 @@
+ 	d-demangle.c dwarfnames.c dyn-string.c				\
+ 	fdmatch.c ffs.c fibheap.c filename_cmp.c floatformat.c		\
+ 	fnmatch.c fopen_unlocked.c					\
+-	getcwd.c getopt.c getopt1.c getpagesize.c getpwd.c getruntime.c	\
++	getcwd.c getpagesize.c getpwd.c getruntime.c	\
+          gettimeofday.c                                                 \
+ 	hashtab.c hex.c							\
+ 	index.c insque.c						\
+@@ -156,9 +156,8 @@
+ 	 strtoll.c strtoul.c strtoull.c strndup.c strnlen.c             \
+ 	 strverscmp.c timeval-utils.c tmpnam.c				\
+ 	unlink-if-ordinary.c						\
+-	vasprintf.c vfork.c vfprintf.c vprintf.c vprintf-support.c	\
+-	 vsnprintf.c vsprintf.c						\
+-	waitpid.c							\
++	vasprintf.c vfprintf.c vprintf.c vprintf-support.c vsnprintf.c	\
++	 vsprintf.c msdos.c						\
+ 	xasprintf.c xatexit.c xexit.c xmalloc.c xmemdup.c xstrdup.c	\
+ 	 xstrerror.c xstrndup.c xvasprintf.c
+ 
+@@ -174,7 +173,7 @@
+ 	./fdmatch.$(objext) ./fibheap.$(objext)				\
+ 	./filename_cmp.$(objext) ./floatformat.$(objext)		\
+ 	./fnmatch.$(objext) ./fopen_unlocked.$(objext)			\
+-	./getopt.$(objext) ./getopt1.$(objext) ./getpwd.$(objext)	\
++	./getpwd.$(objext)	\
+ 	./getruntime.$(objext) ./hashtab.$(objext) ./hex.$(objext)	\
+ 	./lbasename.$(objext) ./lrealpath.$(objext)			\
+ 	./make-relative-prefix.$(objext) ./make-temp-file.$(objext)	\
+@@ -224,8 +223,8 @@
+ 	 ./strrchr.$(objext) ./strstr.$(objext) ./strtod.$(objext)	\
+ 	 ./strtol.$(objext) ./strtoul.$(objext) strtoll.$(objext)	\
+ 	./strtoull.$(objext) ./tmpnam.$(objext) ./strverscmp.$(objext)	\
+-	./vasprintf.$(objext) ./vfork.$(objext) ./vfprintf.$(objext)	\
+-	 ./vprintf.$(objext) ./vsnprintf.$(objext) ./vsprintf.$(objext)	\
++	./vasprintf.$(objext) ./vfprintf.$(objext) ./vprintf.$(objext)	\
++	 ./vsnprintf.$(objext) ./vsprintf.$(objext) ./msdos.$(objext)	\
+ 	./waitpid.$(objext)
+ 
+ # These files are installed if the library has been configured to do so.
