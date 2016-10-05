@@ -39,12 +39,11 @@ DLFCN_VERSION=1.0.0
 BINUTILS_VERSION=2.27
 GCC_VERSION=6.2.0
 
-ROOTDIR=$(realpath `dirname $0`)
+ROOTDIR=$(cd `dirname $0` && pwd)
 PATCHDIR=${ROOTDIR}/patch
 DOWNLOADDIR=${ROOTDIR}/download
 SRCDIR=${ROOTDIR}/src
 BUILDDIR=${ROOTDIR}/build
-mkdir -p ${SRCDIR} ${BUILDDIR}
-SRCRELDIR=$(realpath --relative-to="${BUILDDIR}" ${SRCDIR})
+SRCRELDIR=../src
 INSTALLDIR=${ROOTDIR}/install
 VITASDKROOT=${ROOTDIR}/vitasdk

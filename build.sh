@@ -52,7 +52,16 @@ function do_download {
   if [ ! -d ${SRCDIR}/${filename%%.[a-zA-Z\.]*} ]; then
     downloaded=true
     curl -L ${1} > ${DOWNLOADDIR}/${filename}
-    tar xaf ${DOWNLOADDIR}/${filename} -C ${SRCDIR}
+    case ${filename##*.} in
+      xz) tar xJf ${DOWNLOADDIR}/${filename} -C ${SRCDIR}
+        ;;
+      bz2) tar xjf ${DOWNLOADDIR}/${filename} -C ${SRCDIR}
+        ;;
+      gz) tar xzf ${DOWNLOADDIR}/${filename} -C ${SRCDIR}
+        ;;
+      *) tar xaf ${DOWNLOADDIR}/${filename} -C ${SRCDIR}
+        ;;
+    esac
   else
     downloaded=false
   fi
@@ -114,7 +123,7 @@ if [[ ${STEP_ALL} = true || ${STEP_TOOLCHAIN_DEPS} = true ]]; then
   echo "[Step 2.1] Build zlib..."
   do_download http://zlib.net/zlib-${ZLIB_VERSION}.tar.xz
   cd ${SRCDIR}/zlib-${ZLIB_VERSION}
-  if [[ "${HOST_NAME}" == *"mingw"* ]]; then
+  if [[ "${HOST_NATIVE}" == *"mingw"* ]]; then
     make -f win32/Makefile.gcc clean
     BINARY_PATH=${INSTALLDIR}/bin INCLUDE_PATH=${INSTALLDIR}/include LIBRARY_PATH=${INSTALLDIR}/lib make -f win32/Makefile.gcc clean install
   else
@@ -151,7 +160,7 @@ if [[ ${STEP_ALL} = true || ${STEP_TOOLCHAIN_DEPS} = true ]]; then
   cmake -G"Unix Makefiles" -DCMAKE_INSTALL_PREFIX=$INSTALLDIR -DCMAKE_BUILD_TYPE=Release -DJANSSON_BUILD_DOCS=OFF ${SRCDIR}/jansson-${JANSSON_VERSION}
   make ${JOBS} install
 
-  if [[ "${HOST_NAME}" == *"mingw"* ]]; then
+  if [[ "${HOST_NATIVE}" == *"mingw"* ]]; then
     echo "[Step 2.5] Build dlfcn-win32..."
     do_download https://github.com/dlfcn-win32/dlfcn-win32/archive/v${DLFCN_VERSION}.tar.gz dlfcn-${DLFCN_VERSION}.tar.gz
     cd ${SRCDIR}/dlfcn-win32-${DLFCN_VERSION}
@@ -185,7 +194,7 @@ if [[ ${STEP_ALL} = true || ${STEP_BINUTILS} = true ]]; then
     cd ${SRCDIR}/binutils-${BINUTILS_VERSION}
     patch -p1 < ${PATCHDIR}/binutils.patch
     patch -p1 < ${PATCHDIR}/binutils-227.patch
-    if [[ "${HOST_NAME}" == *"mingw"* ]]; then
+    if [[ "${HOST_NATIVE}" == *"mingw"* ]]; then
       patch -p1 < ${PATCHDIR}/binutils-mingw.patch
     fi
   fi
@@ -200,6 +209,9 @@ fi
 export VITASDK=${VITASDKROOT}
 export OLDPATH=${PATH}
 export PATH=${VITASDK}/bin:${PATH}
+if [[ "${HOST_NATIVE}" == *"darwin"* ]]; then
+  GCC_EXTRA_FLAGS='CXXFLAGS="-fbracket-depth=1024"'
+fi
 
 if [[ ${STEP_ALL} = true || ${STEP_GCC_FIRST} = true ]]; then
   echo "[Step 5] Build gcc first time..."
@@ -207,7 +219,7 @@ if [[ ${STEP_ALL} = true || ${STEP_GCC_FIRST} = true ]]; then
   if [ ${downloaded} = true ]; then
     cd ${SRCDIR}/gcc-${GCC_VERSION}
     patch -p1 < ${PATCHDIR}/gcc.patch
-    if [[ "${HOST_NAME}" == *"mingw"* ]]; then
+    if [[ "${HOST_NATIVE}" == *"mingw"* ]]; then
       patch -p1 < ${PATCHDIR}/gcc-mingw.patch
     fi
   fi
@@ -215,7 +227,7 @@ if [[ ${STEP_ALL} = true || ${STEP_GCC_FIRST} = true ]]; then
   mkdir -p ${BUILDDIR}/gcc-${GCC_VERSION}
   cd ${BUILDDIR}/gcc-${GCC_VERSION}
   ../${SRCRELDIR}/gcc-${GCC_VERSION}/configure --host=${HOST_NATIVE} --build=${HOST_NATIVE} --target=${HOST_TARGET} --prefix=${VITASDKROOT} --libexecdir=${VITASDKROOT}/lib --infodir=${VITASDKROOT}/share/doc/gcc-${HOST_TARGET}/info --mandir=${VITASDKROOT}/share/doc/gcc-${HOST_TARGET}/man --htmldir=${VITASDKROOT}/share/doc/gcc-${HOST_TARGET}/html --pdfdir=${VITASDKROOT}/share/doc/gcc-${HOST_TARGET}/pdf --enable-languages=c,c++ --disable-decimal-float --disable-libffi --disable-libgomp --disable-libmudflap --disable-libquadmath --disable-libssp --disable-libstdcxx-pch --disable-nls --disable-shared --disable-threads --disable-tls --with-newlib --without-headers --with-gnu-as --with-gnu-ld --with-python-dir=share/gcc-${HOST_TARGET} --with-sysroot=${VITASDKROOT}/${HOST_TARGET} --with-libiconv-prefix=${INSTALLDIR} --with-gmp=${INSTALLDIR} --with-mpfr=${INSTALLDIR} --with-mpc=${INSTALLDIR} --with-isl=${INSTALLDIR} --with-libelf=${INSTALLDIR} "--with-host-libstdcxx=-static-libgcc -Wl,-Bstatic,-lstdc++,-Bdynamic -lm"  "--with-pkgversion=GNU Tools for ARM Embedded Processors [VitaSDK]" --disable-multilib --with-arch=armv7-a --with-tune=cortex-a9 --with-fpu=neon --with-float=hard --with-mode=thumb
-  make ${JOBS} all-gcc
+  make ${JOBS} all-gcc ${GCC_EXTRA_FLAGS}
   make install-gcc
 fi
 
@@ -281,7 +293,7 @@ if [[ ${STEP_ALL} = true || ${STEP_GCC_FINAL} = true ]]; then
     if [ ${downloaded} = true ]; then
       cd ${SRCDIR}/gcc-${GCC_VERSION}
       patch -p1 < ${PATCHDIR}/gcc.patch
-      if [[ "${HOST_NAME}" == *"mingw"* ]]; then
+      if [[ "${HOST_NATIVE}" == *"mingw"* ]]; then
         patch -p1 < ${PATCHDIR}/gcc-mingw.patch
       fi
     fi
@@ -294,7 +306,7 @@ if [[ ${STEP_ALL} = true || ${STEP_GCC_FINAL} = true ]]; then
   mkdir -p ${BUILDDIR}/gcc-${GCC_VERSION}-final
   cd ${BUILDDIR}/gcc-${GCC_VERSION}-final
   ../${SRCRELDIR}/gcc-${GCC_VERSION}/configure --host=${HOST_NATIVE} --build=${HOST_NATIVE} --target=${HOST_TARGET} --prefix=${VITASDKROOT} --libexecdir=${VITASDKROOT}/lib --infodir=${VITASDKROOT}/share/doc/gcc-${HOST_TARGET}/info --mandir=${VITASDKROOT}/share/doc/gcc-${HOST_TARGET}/man --htmldir=${VITASDKROOT}/share/doc/gcc-${HOST_TARGET}/html --pdfdir=${VITASDKROOT}/share/doc/gcc-${HOST_TARGET}/pdf --enable-languages=c,c++ --enable-plugins --enable-threads=posix --disable-decimal-float --disable-libffi --disable-libgomp --disable-libmudflap --disable-libquadmath --disable-libssp --disable-libstdcxx-pch --disable-libstdcxx-verbose --disable-nls --disable-shared --disable-tls --with-gnu-as --with-gnu-ld --with-newlib --with-headers=yes --with-python-dir=share/gcc-${HOST_TARGET} --with-sysroot=${VITASDKROOT}/${HOST_TARGET} --with-libiconv-prefix=${INSTALLDIR} --with-gmp=${INSTALLDIR} --with-mpfr=${INSTALLDIR} --with-mpc=${INSTALLDIR} --with-isl=${INSTALLDIR} --with-libelf=${INSTALLDIR}  "--with-host-libstdcxx=-static-libgcc -Wl,-Bstatic,-lstdc++,-Bdynamic -lm" "--with-pkgversion=GNU Tools for ARM Embedded Processors [VitaSDK]" --disable-multilib --with-arch=armv7-a --with-tune=cortex-a9 --with-fpu=neon --with-float=hard --with-mode=thumb
-  make ${JOBS} INHIBIT_LIBC_CFLAGS="-DUSE_TM_CLONE_REGISTRY=0"
+  make ${JOBS} INHIBIT_LIBC_CFLAGS="-DUSE_TM_CLONE_REGISTRY=0" ${GCC_EXTRA_FLAGS}
   make install
 
   pushd ${VITASDKROOT}
