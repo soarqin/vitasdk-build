@@ -44,15 +44,27 @@ fi
 
 mkdir -p ${DOWNLOADDIR} ${SRCDIR} ${BUILDDIR} ${INSTALLDIR}
 
-if [[ ${STEP_ALL} || ${STEP_GCC_DEPS} ]]; then
-  echo "[Step 1.1] Build libiconv..."
-  cd ${DOWNLOADDIR}
-  if [ ! -f libiconv-${LIBICONV_VERSION}.tar.gz ]; then
-	curl -L -O http://ftp.gnu.org/gnu/libiconv/libiconv-${LIBICONV_VERSION}.tar.gz
+function do_download {
+  filename=$2
+  if [ "${filename}" == "" ]; then
+      filename=$(basename "$1")
   fi
-  tar xzf libiconv-${LIBICONV_VERSION}.tar.gz -C ${SRCDIR}
-  cd ${SRCDIR}/libiconv-${LIBICONV_VERSION}
-  patch -p1 < ${PATCHDIR}/libiconv.patch
+  if [ ! -d ${SRCDIR}/${filename%%.[a-zA-Z\.]*} ]; then
+    downloaded=true
+    curl -L ${1} > ${DOWNLOADDIR}/${filename}
+    tar xaf ${DOWNLOADDIR}/${filename} -C ${SRCDIR}
+  else
+    downloaded=false
+  fi
+}
+
+if [[ ${STEP_ALL} = true || ${STEP_GCC_DEPS} = true ]]; then
+  echo "[Step 1.1] Build libiconv..."
+  do_download http://ftp.gnu.org/gnu/libiconv/libiconv-${LIBICONV_VERSION}.tar.gz
+  if [ ${downloaded} = true ]; then
+    cd ${SRCDIR}/libiconv-${LIBICONV_VERSION}
+    patch -p1 < ${PATCHDIR}/libiconv.patch
+  fi
   rm -rf ${BUILDDIR}/libiconv-${LIBICONV_VERSION}
   mkdir -p ${BUILDDIR}/libiconv-${LIBICONV_VERSION}
   cd ${BUILDDIR}/libiconv-${LIBICONV_VERSION}
@@ -62,10 +74,7 @@ if [[ ${STEP_ALL} || ${STEP_GCC_DEPS} ]]; then
 
   echo "[Step 1.2] Build GMP..."
   cd ${DOWNLOADDIR}
-  if [ ! -f gmp-${GMP_VERSION}.tar.xz ]; then
-	curl -L -O http://ftp.gnu.org/gnu/gmp/gmp-${GMP_VERSION}.tar.xz
-  fi
-  tar xJf gmp-${GMP_VERSION}.tar.xz -C ${SRCDIR}
+  do_download http://ftp.gnu.org/gnu/gmp/gmp-${GMP_VERSION}.tar.xz
   rm -rf ${BUILDDIR}/gmp-${GMP_VERSION}
   mkdir -p ${BUILDDIR}/gmp-${GMP_VERSION}
   cd ${BUILDDIR}/gmp-${GMP_VERSION}
@@ -74,11 +83,7 @@ if [[ ${STEP_ALL} || ${STEP_GCC_DEPS} ]]; then
   make install
 
   echo "[Step 1.3] Build MPFR..."
-  cd ${DOWNLOADDIR}
-  if [ ! -f mpfr-${MPFR_VERSION}.tar.xz ]; then
-	curl -L -O http://ftp.gnu.org/gnu/mpfr/mpfr-${MPFR_VERSION}.tar.xz
-  fi
-  tar xJf mpfr-${MPFR_VERSION}.tar.xz -C ${SRCDIR}
+  do_download http://ftp.gnu.org/gnu/mpfr/mpfr-${MPFR_VERSION}.tar.xz
   rm -rf ${BUILDDIR}/mpfr-${MPFR_VERSION}
   mkdir -p ${BUILDDIR}/mpfr-${MPFR_VERSION}
   cd ${BUILDDIR}/mpfr-${MPFR_VERSION}
@@ -87,11 +92,7 @@ if [[ ${STEP_ALL} || ${STEP_GCC_DEPS} ]]; then
   make install
 
   echo "[Step 1.4] Build MPC..."
-  cd ${DOWNLOADDIR}
-  if [ ! -f mpc-${MPC_VERSION}.tar.gz ]; then
-	curl -L -O http://ftp.gnu.org/gnu/mpc/mpc-${MPC_VERSION}.tar.gz
-  fi
-  tar xzf mpc-${MPC_VERSION}.tar.gz -C ${SRCDIR}
+  do_download http://ftp.gnu.org/gnu/mpc/mpc-${MPC_VERSION}.tar.gz
   rm -rf ${BUILDDIR}/mpc-${MPC_VERSION}
   mkdir -p ${BUILDDIR}/mpc-${MPC_VERSION}
   cd ${BUILDDIR}/mpc-${MPC_VERSION}
@@ -100,11 +101,7 @@ if [[ ${STEP_ALL} || ${STEP_GCC_DEPS} ]]; then
   make install
 
   echo "[Step 1.5] Build ISL..."
-  cd ${DOWNLOADDIR}
-  if [ ! -f isl-${ISL_VERSION}.tar.xz ]; then
-	curl -L -O http://isl.gforge.inria.fr/isl-${ISL_VERSION}.tar.xz
-  fi
-  tar xJf isl-${ISL_VERSION}.tar.xz -C ${SRCDIR}
+  do_download http://isl.gforge.inria.fr/isl-${ISL_VERSION}.tar.xz
   rm -rf ${BUILDDIR}/isl-${ISL_VERSION}
   mkdir -p ${BUILDDIR}/isl-${ISL_VERSION}
   cd ${BUILDDIR}/isl-${ISL_VERSION}
@@ -113,27 +110,21 @@ if [[ ${STEP_ALL} || ${STEP_GCC_DEPS} ]]; then
   make install
 fi
 
-if [[ ${STEP_ALL} || ${STEP_TOOLCHAIN_DEPS} ]]; then
+if [[ ${STEP_ALL} = true || ${STEP_TOOLCHAIN_DEPS} = true ]]; then
   echo "[Step 2.1] Build zlib..."
-  cd ${DOWNLOADDIR}
-  if [ ! -f zlib-${ZLIB_VERSION}.tar.xz ]; then
-    curl -L -O http://zlib.net/zlib-${ZLIB_VERSION}.tar.xz
-  fi
-  tar xJf zlib-${ZLIB_VERSION}.tar.xz -C ${SRCDIR}
+  do_download http://zlib.net/zlib-${ZLIB_VERSION}.tar.xz
   cd ${SRCDIR}/zlib-${ZLIB_VERSION}
   if [[ "${HOST_NAME}" == *"mingw"* ]]; then
+    make -f win32/Makefile.gcc clean
     BINARY_PATH=${INSTALLDIR}/bin INCLUDE_PATH=${INSTALLDIR}/include LIBRARY_PATH=${INSTALLDIR}/lib make -f win32/Makefile.gcc clean install
   else
     ./configure --prefix=${INSTALLDIR}
+    make clean
     make ${JOBS} install
   fi
 
   echo "[Step 2.2] Build libzip..."
-  cd ${DOWNLOADDIR}
-  if [ ! -f libzip-${LIBZIP_VERSION}.tar.xz ]; then
-    curl -L -O https://nih.at/libzip/libzip-${LIBZIP_VERSION}.tar.xz
-  fi
-  tar xJf libzip-${LIBZIP_VERSION}.tar.xz -C ${SRCDIR}
+  do_download https://nih.at/libzip/libzip-${LIBZIP_VERSION}.tar.xz
   rm -rf ${BUILDDIR}/libzip-${LIBZIP_VERSION}
   mkdir -p ${BUILDDIR}/libzip-${LIBZIP_VERSION}
   cd ${BUILDDIR}/libzip-${LIBZIP_VERSION}
@@ -141,13 +132,11 @@ if [[ ${STEP_ALL} || ${STEP_TOOLCHAIN_DEPS} ]]; then
   make ${JOBS} -C lib install
 
   echo "[Step 2.3] Build libelf..."
-  cd ${DOWNLOADDIR}
-  if [ ! -f libelf-${LIBELF_VERSION}.tar.gz ]; then
-    curl -L -O http://www.mr511.de/software/libelf-${LIBELF_VERSION}.tar.gz
+  do_download http://www.mr511.de/software/libelf-${LIBELF_VERSION}.tar.gz
+  if [ ${downloaded} = true ]; then
+    cd ${SRCDIR}/libelf-${LIBELF_VERSION}
+    patch -p1 < ${PATCHDIR}/libelf.patch
   fi
-  tar xzf libelf-${LIBELF_VERSION}.tar.gz -C ${SRCDIR}
-  cd ${SRCDIR}/libelf-${LIBELF_VERSION}
-  patch -p1 < ${PATCHDIR}/libelf.patch
   rm -rf ${BUILDDIR}/libelf-${LIBELF_VERSION}
   mkdir -p ${BUILDDIR}/libelf-${LIBELF_VERSION}
   cd ${BUILDDIR}/libelf-${LIBELF_VERSION}
@@ -155,11 +144,7 @@ if [[ ${STEP_ALL} || ${STEP_TOOLCHAIN_DEPS} ]]; then
   make ${JOBS} install
 
   echo "[Step 2.4] Build jansson..."
-  cd ${DOWNLOADDIR}
-  if [ ! -f jansson-${JANSSON_VERSION}.tar.gz ]; then
-    curl -L -o jansson-${JANSSON_VERSION}.tar.gz https://github.com/akheron/jansson/archive/v${JANSSON_VERSION}.tar.gz
-  fi
-  tar xzf jansson-${JANSSON_VERSION}.tar.gz -C ${SRCDIR}
+  do_download https://github.com/akheron/jansson/archive/v${JANSSON_VERSION}.tar.gz jansson-${JANSSON_VERSION}.tar.gz
   rm -rf ${BUILDDIR}/jansson-${JANSSON_VERSION}
   mkdir -p ${BUILDDIR}/jansson-${JANSSON_VERSION}
   cd ${BUILDDIR}/jansson-${JANSSON_VERSION}
@@ -168,19 +153,16 @@ if [[ ${STEP_ALL} || ${STEP_TOOLCHAIN_DEPS} ]]; then
 
   if [[ "${HOST_NAME}" == *"mingw"* ]]; then
     echo "[Step 2.5] Build dlfcn-win32..."
-    cd ${DOWNLOADDIR}
-    if [ ! -f dlfcn-${DLFCN_VERSION}.tar.gz ]; then
-      curl -L -o dlfcn-${DLFCN_VERSION}.tar.gz https://github.com/dlfcn-win32/dlfcn-win32/archive/v${DLFCN_VERSION}.tar.gz
-    fi
-    tar xzf dlfcn-${DLFCN_VERSION}.tar.gz -C ${SRCDIR}
+    do_download https://github.com/dlfcn-win32/dlfcn-win32/archive/v${DLFCN_VERSION}.tar.gz dlfcn-${DLFCN_VERSION}.tar.gz
     cd ${SRCDIR}/dlfcn-win32-${DLFCN_VERSION}
     ./configure --prefix=${INSTALLDIR}
-    make
+    make clean
+    make ${JOBS}
     make install
   fi
 fi
 
-if [[ ${STEP_ALL} || ${STEP_TOOLCHAIN} ]]; then
+if [[ ${STEP_ALL} = true || ${STEP_TOOLCHAIN} = true ]]; then
   echo "[Step 3] Build vita-toolchain..."
   if [ ! -d ${SRCDIR}/vita-toolchain/.git ]; then
     rm -rf ${SRCDIR}/vita-toolchain
@@ -196,18 +178,16 @@ if [[ ${STEP_ALL} || ${STEP_TOOLCHAIN} ]]; then
   make ${JOBS} install
 fi
 
-if [[ ${STEP_ALL} || ${STEP_BINUTILS} ]]; then
+if [[ ${STEP_ALL} = true || ${STEP_BINUTILS} = true ]]; then
   echo "[Step 4] Build binutils..."
-  cd ${DOWNLOADDIR}
-  if [ ! -f binutils-${BINUTILS_VERSION}.tar.bz2 ]; then
-    curl -L -O http://ftp.gnu.org/gnu/binutils/binutils-${BINUTILS_VERSION}.tar.bz2
-  fi
-  tar xjf binutils-${BINUTILS_VERSION}.tar.bz2 -C ${SRCDIR}
-  cd ${SRCDIR}/binutils-${BINUTILS_VERSION}
-  patch -p1 < ${PATCHDIR}/binutils.patch
-  patch -p1 < ${PATCHDIR}/binutils-227.patch
-  if [[ "${HOST_NAME}" == *"mingw"* ]]; then
-    patch -p1 < ${PATCHDIR}/binutils-mingw.patch
+  do_download http://ftp.gnu.org/gnu/binutils/binutils-${BINUTILS_VERSION}.tar.bz2
+  if [ ${downloaded} = true ]; then
+    cd ${SRCDIR}/binutils-${BINUTILS_VERSION}
+    patch -p1 < ${PATCHDIR}/binutils.patch
+    patch -p1 < ${PATCHDIR}/binutils-227.patch
+    if [[ "${HOST_NAME}" == *"mingw"* ]]; then
+      patch -p1 < ${PATCHDIR}/binutils-mingw.patch
+    fi
   fi
   rm -rf ${BUILDDIR}/binutils-${BINUTILS_VERSION}
   mkdir -p ${BUILDDIR}/binutils-${BINUTILS_VERSION}
@@ -221,17 +201,15 @@ export VITASDK=${VITASDKROOT}
 export OLDPATH=${PATH}
 export PATH=${VITASDK}/bin:${PATH}
 
-if [[ ${STEP_ALL} || ${STEP_GCC_FIRST} ]]; then
+if [[ ${STEP_ALL} = true || ${STEP_GCC_FIRST} = true ]]; then
   echo "[Step 5] Build gcc first time..."
-  cd ${DOWNLOADDIR}
-  if [ ! -f gcc-${GCC_VERSION}.tar.bz2 ]; then
-    curl -L -O http://ftp.gnu.org/gnu/gcc/gcc-${GCC_VERSION}/gcc-${GCC_VERSION}.tar.bz2
-  fi
-  tar xjf gcc-${GCC_VERSION}.tar.bz2 -C ${SRCDIR}
-  cd ${SRCDIR}/gcc-${GCC_VERSION}
-  patch -p1 < ${PATCHDIR}/gcc.patch
-  if [[ "${HOST_NAME}" == *"mingw"* ]]; then
-    patch -p1 < ${PATCHDIR}/gcc-mingw.patch
+  do_download http://ftp.gnu.org/gnu/gcc/gcc-${GCC_VERSION}/gcc-${GCC_VERSION}.tar.bz2
+  if [ ${downloaded} = true ]; then
+    cd ${SRCDIR}/gcc-${GCC_VERSION}
+    patch -p1 < ${PATCHDIR}/gcc.patch
+    if [[ "${HOST_NAME}" == *"mingw"* ]]; then
+      patch -p1 < ${PATCHDIR}/gcc-mingw.patch
+    fi
   fi
   rm -rf ${BUILDDIR}/gcc-${GCC_VERSION}
   mkdir -p ${BUILDDIR}/gcc-${GCC_VERSION}
@@ -241,7 +219,7 @@ if [[ ${STEP_ALL} || ${STEP_GCC_FIRST} ]]; then
   make install-gcc
 fi
 
-if [[ ${STEP_ALL} || ${STEP_HEADERS} ]]; then
+if [[ ${STEP_ALL} = true || ${STEP_HEADERS} = true ]]; then
   echo "[Step 6] Build vita-headers..."
   if [ ! -d ${SRCDIR}/vita-headers/.git ]; then
     rm -rf ${SRCDIR}/vita-headers
@@ -261,7 +239,7 @@ if [[ ${STEP_ALL} || ${STEP_HEADERS} ]]; then
   cp ${SRCDIR}/vita-headers/db.json ${VITASDKROOT}/share
 fi
 
-if [[ ${STEP_ALL} || ${STEP_NEWLIB} ]]; then
+if [[ ${STEP_ALL} = true || ${STEP_NEWLIB} = true ]]; then
   echo "[Step 7] Build newlib..."
   if [ ! -d ${SRCDIR}/newlib/.git ]; then
     rm -rf ${SRCDIR}/newlib
@@ -278,7 +256,7 @@ if [[ ${STEP_ALL} || ${STEP_NEWLIB} ]]; then
   make install
 fi
 
-if [[ ${STEP_ALL} || ${STEP_PTHREAD} ]]; then
+if [[ ${STEP_ALL} = true || ${STEP_PTHREAD} = true ]]; then
   echo "[Step 8] Build pthread..."
   if [ ! -d ${SRCDIR}/pthread-embedded/.git ]; then
     rm -rf ${SRCDIR}/pthread-embedded
@@ -296,18 +274,16 @@ if [[ ${STEP_ALL} || ${STEP_PTHREAD} ]]; then
   make install
 fi
 
-if [[ ${STEP_ALL} || ${STEP_GCC_FINAL} ]]; then
+if [[ ${STEP_ALL} = true || ${STEP_GCC_FINAL} = true ]]; then
   echo "[Step 9] Build gcc final..."
   if [ ! -d ${SRCDIR}/gcc-${GCC_VERSION} ]; then
-    cd ${DOWNLOADDIR}
-    if [ ! -f gcc-${GCC_VERSION}.tar.bz2 ]; then
-      curl -L -O http://ftp.gnu.org/gnu/gcc/gcc-${GCC_VERSION}/gcc-${GCC_VERSION}.tar.bz2
-    fi
-    tar xjf gcc-${GCC_VERSION}.tar.bz2 -C ${SRCDIR}
-    cd ${SRCDIR}/gcc-${GCC_VERSION}
-    patch -p1 < ${PATCHDIR}/gcc.patch
-    if [[ "${HOST_NAME}" == *"mingw"* ]]; then
-      patch -p1 < ${PATCHDIR}/gcc-mingw.patch
+    do_download http://ftp.gnu.org/gnu/gcc/gcc-${GCC_VERSION}/gcc-${GCC_VERSION}.tar.bz2
+    if [ ${downloaded} = true ]; then
+      cd ${SRCDIR}/gcc-${GCC_VERSION}
+      patch -p1 < ${PATCHDIR}/gcc.patch
+      if [[ "${HOST_NAME}" == *"mingw"* ]]; then
+        patch -p1 < ${PATCHDIR}/gcc-mingw.patch
+      fi
     fi
   fi
   pushd ${VITASDKROOT}/${HOST_TARGET}
@@ -333,7 +309,7 @@ if [[ ${STEP_ALL} || ${STEP_GCC_FINAL} ]]; then
   popd
 fi
 
-if [[ ${STEP_ALL} || ${STEP_STRIP} ]]; then
+if [[ ${STEP_ALL} = true || ${STEP_STRIP} = true ]]; then
   echo "[Step 10] Strip binaries..."
 
   find ${VITASDKROOT} -name '*.la' -type f -exec rm '{}' ';'
