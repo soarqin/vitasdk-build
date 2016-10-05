@@ -10,26 +10,16 @@ if [ $# -gt 0 ]; then
       --help) echo "Supported steps: gcc-deps toolchain-deps toolchain binutils gcc headers newlib pthread gcc-final strip"
         exit 1
         ;;
-      gcc-deps) STEP_GCC_DEPS=true
-        ;;
-      toolchain-deps) STEP_TOOLCHAIN_DEPS=true
-        ;;
-      toolchain) STEP_TOOLCHAIN=true
-        ;;
-      binutils) STEP_BINUTILS=true
-        ;;
-      gcc) STEP_GCC_FIRST=true
-        ;;
-      headers) STEP_HEADERS=true
-        ;;
-      newlib) STEP_NEWLIB=true
-        ;;
-      pthread) STEP_PTHREAD=true
-        ;;
-      gcc-final) STEP_GCC_FINAL=true
-        ;;
-      strip) STEP_STRIP=true
-        ;;
+      gcc-deps) STEP_GCC_DEPS=true ;;
+      toolchain-deps) STEP_TOOLCHAIN_DEPS=true ;;
+      toolchain) STEP_TOOLCHAIN=true ;;
+      binutils) STEP_BINUTILS=true ;;
+      gcc) STEP_GCC_FIRST=true ;;
+      headers) STEP_HEADERS=true ;;
+      newlib) STEP_NEWLIB=true ;;
+      pthread) STEP_PTHREAD=true ;;
+      gcc-final) STEP_GCC_FINAL=true ;;
+      strip) STEP_STRIP=true ;;
       *) echo "Unsupported $1"
         exit 1
         ;;
@@ -53,14 +43,10 @@ function do_download {
     downloaded=true
     curl -L ${1} > ${DOWNLOADDIR}/${filename}
     case ${filename##*.} in
-      xz) tar xJf ${DOWNLOADDIR}/${filename} -C ${SRCDIR}
-        ;;
-      bz2) tar xjf ${DOWNLOADDIR}/${filename} -C ${SRCDIR}
-        ;;
-      gz) tar xzf ${DOWNLOADDIR}/${filename} -C ${SRCDIR}
-        ;;
-      *) tar xaf ${DOWNLOADDIR}/${filename} -C ${SRCDIR}
-        ;;
+      xz)  tar xJf ${DOWNLOADDIR}/${filename} -C ${SRCDIR} ;;
+      bz2) tar xjf ${DOWNLOADDIR}/${filename} -C ${SRCDIR} ;;
+      gz)  tar xzf ${DOWNLOADDIR}/${filename} -C ${SRCDIR} ;;
+      *)   tar xaf ${DOWNLOADDIR}/${filename} -C ${SRCDIR} ;;
     esac
   else
     downloaded=false
@@ -324,8 +310,14 @@ fi
 if [[ ${STEP_ALL} = true || ${STEP_STRIP} = true ]]; then
   echo "[Step 10] Strip binaries..."
 
+  case "${HOST_NATIVE}" in
+    *darwin*)  PERM="+111" ;;
+    *freebsd*) PERM="+111" ;;
+    *)         PERM="/111" ;;
+  esac
+
   find ${VITASDKROOT} -name '*.la' -type f -exec rm '{}' ';'
-  find ${VITASDKROOT} -executable -type f -exec strip '{}' ';'
+  find ${VITASDKROOT} -perm ${PERM} -type f -exec strip '{}' ';'
 
   for target_lib in `find ${VITASDKROOT}/${HOST_TARGET}/lib -name \*.a` ; do
       ${HOST_TARGET}-objcopy -R .comment -R .note -R .debug_info -R .debug_aranges -R .debug_pubnames -R .debug_pubtypes -R .debug_abbrev -R .debug_line -R .debug_str -R .debug_ranges -R .debug_loc $target_lib || true

@@ -3,6 +3,12 @@ Build for Linux
 1. Install following packages: make, gcc, g++, pkg-config, texinfo, bison, flex, cmake
 2. Run ./build.sh
 
+Build for MacOSX/macOS
+======================
+1. Install Homebrew (see http://brew.sh)
+2. Install cmake, pkg-config from brew
+3. Run ./build.sh
+
 Build for MinGW
 ===============
 1. Get latest msys2 from https://sourceforge.net/projects/msys2 and install it somewhere.
